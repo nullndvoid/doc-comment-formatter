@@ -1,0 +1,12 @@
+.{
+    .name = .doc_comment_formatter,
+    .version = "0.0.0",
+    .fingerprint = 0x53050812d26d3f04,
+    .minimum_zig_version = "0.17.1",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
