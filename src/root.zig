@@ -338,6 +338,144 @@ pub const InMemoryStore = struct {
     }
 };
 
+/// An insert using file-based coordinates.
+pub const FileEdit = struct {
+    /// `doc.start_offset + edit.offset`.
+    offset: u64,
+    /// The text to insert.
+    text: []const u8,
+};
+
+/// Takes a bunch of documents and formats them according to `Config`.
+pub const Formatter = struct {
+    cfg: Config,
+
+    pub const MAX_COLUMN_LIMIT_DEFAULT = 100;
+
+    pub const Config = struct {
+        /// This can probably just be a u8. Column by which we should hard-wrap.
+        max_column_limit: u16 = MAX_COLUMN_LIMIT_DEFAULT,
+    };
+
+    pub fn init(config: Config) Formatter {
+        return .{ .cfg = config };
+    }
+
+    pub const Token = struct {
+        /// `[start_offset, end_offset)` (within the document).
+        start_offset: u32,
+        /// `[start_offset, end_offset)` (within the document).
+        end_offset: u32,
+        kind: Kind,
+
+        pub const Kind = enum {
+            /// Should break in between words.
+            word,
+            space,
+            newline,
+            blank_line,
+            inline_code,
+            code_block,
+            /// `[some text](some text)`. Will not be wrapped.
+            link,
+            eof,
+            /// Ignore these tokens.
+            invalid,
+        };
+    };
+
+    pub const Tokeniser = struct {
+        buffer: []const u8,
+        index: usize,
+
+        const State = enum { start, invalid, backtick };
+
+        pub fn init(buffer: []const u8) Tokeniser {
+            return .{ .buffer = buffer, .index = 0 };
+        }
+
+        pub fn next(self: *Tokeniser) Token {
+            var result = Token{
+                .start_offset = self.index,
+                .end_offset = undefined,
+                .kind = undefined,
+            };
+
+            state: switch (State.start) {
+                .start => switch (self.buffer[self.index]) {
+                    0 => {
+                        if (self.index == self.buffer.len) {
+                            return .{
+                                .start_offset = self.index,
+                                .end_offset = self.index,
+                                .kind = .eof,
+                            };
+                        }
+
+                        continue :state .invalid;
+                    },
+                    // Start of inline code block or a normal code block. Or just stray i.e. a word.
+                    '`' => {
+                        continue :state .backtick;
+                    },
+                },
+                .backtick => {
+                    self.index += 1;
+                    switch (self.buffer[self.index]) {
+                        0 => if (self.index == self.buffer.len) {
+                            result.kind = .invalid;
+                        } else {
+                            continue :state .invalid;
+                        },
+                        ' ' => {
+                            result.kind = .word;
+                        },
+                    }
+                },
+                .invalid => {
+                    self.index += 1;
+                    switch (self.buffer[self.index]) {
+                        0 => if (self.index == self.buffer.len) {
+                            result.kind = .invalid;
+                        } else {
+                            continue :state .invalid;
+                        },
+                        '\n' => result.kind = .invalid,
+                        else => continue :state .invalid,
+                    }
+                },
+            }
+
+            return result;
+        }
+    };
+
+    /// Emits a list of edits (places to insert characters).
+    ///
+    /// Caller should free the returned list of edits once done.
+    pub fn format(self: Formatter, doc: Document, alloc: Allocator) []const FileEdit {
+        _ = self; // autofix
+        _ = alloc; // autofix
+        // `doc` has some lines starting with ///. Get locations of newlines
+        // and work backwards to line-wrap.
+        //
+        // We can't line wrap URLs, headings, anything in code blocks, ~~or
+        // quotes~~.
+        //
+        // I reckon we tokenise into `word`, `url`, `code block`,
+        // `thematic_break`, `atx_heading`, `setext_heading`.
+        //
+        // We ignore thematic_break, atx_heading, code_block, url.
+        // Setext_heading can be line broken per CommonMark spec.
+        // Of course we try to word wrap without hyphenation.
+        const doc_file_offset = doc.start_offset;
+        _ = doc_file_offset; // autofix
+        const doc_bytes = doc.bytes;
+        _ = doc_bytes; // autofix
+
+    }
+};
+
 test {
     std.testing.refAllDecls(@This());
 }
